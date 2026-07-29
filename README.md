@@ -5,7 +5,7 @@ Sistema completo de gestión de pedidos para negocios de comida, compuesto por:
 - **Panel Web** — Administración, cocina, cobro e inventario
 - **Visor de Pedidos** — Pantalla de visualización en tiempo real
 
-## 📱 Estructura del Proyecto
+##  Estructura del Proyecto
 
 ```
 COMIDA/
@@ -29,7 +29,7 @@ COMIDA/
 └── .firebaserc          # Proyecto Firebase activo
 ```
 
-## ⚙️ Configuración Inicial
+##  Configuración Inicial
 
 ### 1. Clonar el repositorio
 ```bash
@@ -47,9 +47,9 @@ Edita `firebase-config.js` con tus credenciales de Firebase Console.
 1. Descarga `GoogleService-Info.plist` desde [Firebase Console](https://console.firebase.google.com)
 2. Colócalo en `COMIDA/COMIDA/GoogleService-Info.plist`
 
-> ⚠️ **Nunca** subas `firebase-config.js` ni `GoogleService-Info.plist` al repositorio.
+>  **Nunca** subas `firebase-config.js` ni `GoogleService-Info.plist` al repositorio.
 
-## 🔐 Seguridad
+##  Seguridad
 
 Los siguientes archivos están **excluidos del repositorio** por contener credenciales:
 - `web/js/firebase-config.js` — API Key del proyecto web
@@ -58,7 +58,7 @@ Los siguientes archivos están **excluidos del repositorio** por contener creden
 
 Consulta `.gitignore` para la lista completa.
 
-## 🚀 Tecnologías
+##  Tecnologías
 
 | Componente | Tecnología |
 |-----------|-----------|
@@ -66,6 +66,6 @@ Consulta `.gitignore` para la lista completa.
 | Web Panel | HTML5, CSS3, JavaScript, Firebase Web SDK v10 |
 | Backend   | Firebase Firestore, Firebase Hosting |
 
-## 📄 Licencia
+##  Licencia
 
 Proyecto privado — Todos los derechos reservados.
