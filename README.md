@@ -1,4 +1,4 @@
-# 🍽️ SaaS de Pedido de Comida
+# SaaS de Pedido de Comida
 
 Sistema completo de gestión de pedidos para negocios de comida, compuesto por:
 - **App iOS (Swift)** — Para tomar pedidos desde dispositivos Apple
