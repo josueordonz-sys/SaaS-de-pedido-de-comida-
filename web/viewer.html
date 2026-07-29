@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor de Cocina - COMIDA</title>
+    <link rel="icon" type="image/png" href="img/logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        .sidebar-transition {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar-collapsed {
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#E11D48',
+                        secondary: '#1E293B',
+                    }
+                }
+            }
+        }
+    </script>
+    <script>
+        // Session Guard
+        if (localStorage.getItem('admin_session') !== 'true') {
+            window.location.href = 'index.html';
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 text-gray-900">
+    <div class="flex h-[100dvh] overflow-hidden">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-64 bg-secondary text-white p-6 hidden md:flex flex-col sidebar-transition">
+            <div class="flex flex-col items-center mb-10">
+                <img src="img/logo.png" alt="Logo" class="h-24 mb-4 drop-shadow-lg">
+                <h2 class="text-xl font-bold gradient-text text-center">COMIDA Admin</h2>
+            </div>
+            <nav class="space-y-4 flex-1">
+                <a href="admin.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Dashboard
+                </a>
+                <a href="pos.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Ventas (POS)
+                </a>
+                <a href="cobro.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Caja / Cobro
+                </a>
+                <a href="viewer.html" class="flex items-center gap-3 p-3 bg-white/10 rounded-xl font-medium">
+                    Visor de Pedidos
+                </a>
+                <a href="inventory.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Inventario
+                </a>
+                <div class="pt-10 space-y-4 border-t border-white/10">
+                    <a href="index.html"
+                        class="flex items-center gap-3 p-3 text-gray-400 hover:text-white transition-all">
+                        Ver Menú Público
+                    </a>
+                    <button onclick="logout()"
+                        class="w-full flex items-center gap-3 p-3 text-red-400 hover:text-red-300 transition-all">
+                        Cerrar Sesión
+                    </button>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <!-- Header (Removed for mobile optimization/space) -->
+            <!-- <header class="bg-white border-b p-6 flex justify-between items-center shrink-0">...</header> -->
+
+            <!-- Orders Container -->
+            <div id="orders-scroll" class="flex-1 overflow-y-auto custom-scrollbar">
+                <!-- Inner Column Grid -->
+                <div id="orders-grid" class="p-4 md:p-6 columns-1 md:columns-2 xl:columns-3 gap-4 md:gap-6 pb-40">
+                    <!-- Dynamic Orders -->
+                </div>
+            </div>
+
+            <!-- Page Indicator (Removed - using scroll) -->
+            <div id="page-indicator" class="hidden"></div>
+        </main>
+    </div>
+
+    <!-- Audio Activation Overlay -->
+    <div id="audio-overlay"
+        class="fixed inset-0 bg-secondary/95 backdrop-blur-md z-[100] flex items-center justify-center text-center p-6 transition-all duration-500">
+        <div class="max-w-md animate__animated animate__zoomIn">
+            <div
+                class="w-24 h-24 bg-primary rounded-full flex items-center justify-center text-5xl mx-auto mb-6 shadow-2xl shadow-primary/40">
+                🔊</div>
+            <h2 class="text-3xl font-black text-white mb-4">Activar Sonido</h2>
+            <p class="text-gray-400 mb-8">Haga clic abajo para activar las alertas de voz y anuncios automáticos de
+                pedidos.</p>
+            <button id="btn-audio"
+                class="bg-primary text-white px-10 py-4 rounded-2xl font-black text-xl hover:scale-105 transition-all shadow-xl shadow-primary/20">ENTENDIDO</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db } from './js/firebase-config.js';
+        import { collection, onSnapshot, query, where, orderBy, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const grid = document.getElementById('orders-grid');
+        const scrollContainer = document.getElementById('orders-scroll');
+        // const countPending = document.getElementById('count-pending'); // Removed
+        // const countToday = document.getElementById('count-today'); // Removed
+        const pageIndicator = document.getElementById('page-indicator');
+
+        let allOrders = [];
+        let currentPage = 0;
+        const CARDS_PER_PAGE = 6;
+        const pageLoadTime = new Date();
+
+        // Audio initialization
+        document.getElementById('btn-audio').onclick = () => {
+            const overlay = document.getElementById('audio-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.remove(), 500);
+            speak("Sistema de visor listo.");
+        };
+
+        let voices = [];
+
+        function loadVoices() {
+            voices = window.speechSynthesis.getVoices();
+        }
+
+        if (window.speechSynthesis.onvoiceschanged !== undefined) {
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+        }
+
+        function speak(text) {
+            if (!window.speechSynthesis) return;
+
+            if (voices.length === 0) loadVoices();
+
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'es-ES';
+            u.rate = 1.0;
+
+            // Find a Spanish voice
+            const spanishVoice = voices.find(v => v.lang.startsWith('es') && v.name.includes('Google')) ||
+                voices.find(v => v.lang.startsWith('es'));
+
+            if (spanishVoice) {
+                u.voice = spanishVoice;
+            }
+
+            window.speechSynthesis.speak(u);
+        }
+
+        // Live Feed: Pending Orders (Simplified query to avoid indexing issues)
+        const qPending = query(collection(db, "pedidos"), where("entregado", "==", false));
+        onSnapshot(qPending, (snapshot) => {
+            allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // Manual sort: Oldest first
+            allOrders.sort((a, b) => {
+                const da = a.fecha ? a.fecha.toDate() : new Date(0);
+                const db = b.fecha ? b.fecha.toDate() : new Date(0);
+                return da - db;
+            });
+
+            // countPending.innerText = allOrders.length; // Removed
+
+            snapshot.docChanges().forEach(change => {
+                if (change.type === "added") {
+                    const order = change.doc.data();
+                    const orderDate = order.fecha ? order.fecha.toDate() : new Date();
+                    if (orderDate > new Date(pageLoadTime.getTime() - 2000)) {
+                        announceOrder(order);
+                    }
+                }
+            });
+
+            refreshDisplay();
+        }, (error) => {
+            console.error("Error en el visor:", error);
+            alert("Error de sincronización. Por favor recarga la página.");
+        });
+
+        // Stats: Completed Today (Removed to save performance/space)
+        // const startOfToday = new Date();
+        // startOfToday.setHours(0, 0, 0, 0);
+        // const qToday = query(collection(db, "pedidos"), where("entregado", "==", true), where("fecha", ">=", startOfToday));
+        // onSnapshot(qToday, (snapshot) => {
+        //    countToday.innerText = snapshot.size;
+        // }, (error) => console.error("Error en stats:", error));
+
+        function announceOrder(order) {
+            const client = order.cliente || "Cliente";
+            const items = Object.entries(order.items || {}).map(([name, qty]) => `${qty} ${name}`).join(", ");
+            let message = `Nuevo pedido para ${client}: ${items}`;
+
+            if (order.comentario) {
+                message += `. Nota: ${order.comentario}`;
+            }
+
+            // Pickup Time Logic
+            if (order.horaRetiro) {
+                const [h, m] = order.horaRetiro.split(':').map(Number);
+                const pickupDate = new Date();
+                pickupDate.setHours(h, m, 0, 0);
+
+                const orderDate = order.fecha ? order.fecha.toDate() : new Date();
+                const diffMins = (pickupDate - orderDate) / 60000;
+
+                // If difference is small (e.g. < 5 mins) or negative (past), say "Immediate"
+                if (diffMins <= 5) {
+                    message += ". Para entrega inmediata.";
+                } else {
+                    // Format time for speech (12h format is clearer)
+                    const timeString = pickupDate.toLocaleTimeString('es-ES', { hour: 'numeric', minute: '2-digit', hour12: true });
+                    message += `. Para retirar a las ${timeString}.`;
+                }
+            } else {
+                // Fallback for orders without horaRetiro
+                message += ". Para entrega inmediata.";
+            }
+
+            speak(message);
+        }
+
+        function refreshDisplay() {
+            // No pagination - Show ALL orders
+            // const totalPages = Math.ceil(allOrders.length / CARDS_PER_PAGE) || 1;
+            // if (currentPage >= totalPages) currentPage = 0;
+            // const start = currentPage * CARDS_PER_PAGE;
+            // const ordersToShow = allOrders.slice(start, start + CARDS_PER_PAGE);
+
+            grid.innerHTML = '';
+
+            if (allOrders.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full flex flex-col items-center justify-center h-full text-gray-400 opacity-50">
+                        <div class="text-6xl mb-4">👨‍🍳</div>
+                        <div class="text-xl font-bold uppercase tracking-widest">Todo Listo</div>
+                    </div>
+                `;
+                return;
+            }
+
+            allOrders.forEach(order => {
+                const card = createOrderCard(order);
+                grid.appendChild(card);
+            });
+        }
+
+        function createOrderCard(order) {
+            const div = document.createElement('div');
+            const date = order.fecha ? order.fecha.toDate() : new Date();
+            const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            // Compact Design for Mobile - break-inside-avoid for masonry
+            div.className = "bg-white rounded-3xl p-4 shadow-sm border border-gray-100 animate__animated animate__fadeIn flex flex-col h-auto break-inside-avoid mb-4 md:mb-6 relative overflow-hidden";
+
+            // Stripe to indicate newness or status
+            const isVeryRecent = (new Date() - date) < 1000 * 60 * 5; // 5 mins
+            if (isVeryRecent) {
+                div.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+            }
+
+            const itemsHtml = Object.entries(order.items || {}).map(([name, qty]) => `
+                <div class="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
+                    <span class="font-bold text-secondary text-base leading-tight">${name}</span>
+                    <span class="bg-gray-100 text-secondary px-3 py-1 rounded-lg font-black text-lg">x${qty}</span>
+                </div>
+            `).join('');
+
+            div.innerHTML = `
+                <div class="flex justify-between items-start mb-3">
+                    <div class="flex flex-col">
+                         <h3 class="text-xl font-black text-secondary leading-none mb-1">${order.cliente || 'Anonimo'}</h3>
+                         <span class="text-xs text-gray-400 font-bold">#${order.id.slice(-4).toUpperCase()} &bull; ${time}</span>
+                         ${order.comentario ? `<div class="mt-2 text-sm text-red-500 font-bold bg-red-50 p-2 rounded-lg">📝 ${order.comentario}</div>` : ''}
+                         ${(() => {
+                    if (order.horaRetiro) {
+                        const [h, m] = order.horaRetiro.split(':').map(Number);
+                        const pickupDate = new Date();
+                        pickupDate.setHours(h, m, 0, 0);
+                        const orderDate = order.fecha ? order.fecha.toDate() : new Date();
+                        const diffMins = (pickupDate - orderDate) / 60000;
+
+                        if (diffMins > 10) { // Only show if scheduled for later (>10 mins from order time)
+                            const timeString = pickupDate.toLocaleTimeString('es-ES', { hour: 'numeric', minute: '2-digit', hour12: true });
+                            return `<div class="mt-2 text-sm text-blue-600 font-black bg-blue-50 p-2 rounded-lg border border-blue-100 flex items-center gap-1">
+                                        <span>🕒</span> Retiro: ${timeString}
+                                    </div>`;
+                        }
+                    }
+                    return '';
+                })()}
+                    </div>
+                </div>
+                <div class="flex-1 mb-4 space-y-1">
+                    ${itemsHtml}
+                </div>
+                <div class="flex gap-3 items-center mt-auto">
+                    <button class="btn-ready w-full bg-secondary text-white py-3 rounded-2xl font-black text-lg hover:bg-green-600 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                        <span>✅</span> <span>LISTO</span>
+                    </button>
+                </div>
+            `;
+
+            div.querySelector('.btn-ready').onclick = async () => {
+                try {
+                    const btn = div.querySelector('.btn-ready');
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50');
+                    await updateDoc(doc(db, "pedidos", order.id), { entregado: true });
+                } catch (e) {
+                    alert("Error al marcar como entregado");
+                    console.error(e);
+                }
+            };
+
+            return div;
+        }
+
+        // Removed Auto-rotation
+        // setInterval(() => { ... }, 10000);
+
+        window.logout = () => {
+            localStorage.removeItem('admin_session');
+            window.location.href = 'index.html';
+        };
+
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('current-date').innerText = new Date().toLocaleDateString('es-ES', options);
+
+        window.toggleSidebar = () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('sidebar-collapsed');
+        };
+    </script>
+    <!-- Mobile Nav -->
+    <div
+        class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center p-2 pb-safe z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <a href="admin.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Dash</span>
+        </a>
+        <a href="pos.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Venta</span>
+        </a>
+        <a href="cobro.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Caja</span>
+        </a>
+        <a href="viewer.html" class="flex flex-col items-center p-2 rounded-xl transition-all text-primary bg-red-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Visor</span>
+        </a>
+        <a href="inventory.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Stock</span>
+        </a>
+    </div>
+</body>
+
+</html>

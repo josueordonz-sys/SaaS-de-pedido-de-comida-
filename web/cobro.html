@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caja / Cobro - COMIDA</title>
+    <link rel="icon" type="image/png" href="img/logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#FF4D4D',
+                        secondary: '#2D3436',
+                        accent: '#FFD93D',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .sidebar-transition {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar-collapsed {
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+    <script>
+        // Session Guard
+        if (localStorage.getItem('admin_session') !== 'true') {
+            window.location.href = 'index.html';
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 text-gray-900">
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-64 bg-secondary text-white p-6 hidden md:flex flex-col sidebar-transition">
+            <div class="flex flex-col items-center mb-10">
+                <img src="img/logo.png" alt="Logo" class="h-24 mb-4 drop-shadow-lg">
+                <h2 class="text-xl font-bold gradient-text text-center">COMIDA Admin</h2>
+            </div>
+            <nav class="space-y-4 flex-1">
+                <a href="admin.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Dashboard
+                </a>
+                <a href="pos.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Ventas (POS)
+                </a>
+                <a href="cobro.html" class="flex items-center gap-3 p-3 bg-white/10 rounded-xl font-medium">
+                    Caja / Cobro
+                </a>
+                <a href="viewer.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Visor de Pedidos
+                </a>
+                <a href="inventory.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Inventario
+                </a>
+                <div class="pt-10 space-y-4 border-t border-white/10">
+                    <a href="index.html"
+                        class="flex items-center gap-3 p-3 text-gray-400 hover:text-white transition-all">
+                        Ver Menú Público
+                    </a>
+                    <button onclick="logout()"
+                        class="w-full flex items-center gap-3 p-3 text-red-400 hover:text-red-300 transition-all">
+                        Cerrar Sesión
+                    </button>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto bg-gray-50 p-4 lg:p-8">
+            <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
+                <div class="flex items-center gap-4">
+                    <button onclick="toggleSidebar()"
+                        class="hidden md:flex p-2 hover:bg-gray-100 rounded-lg transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-secondary" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                    <div>
+                        <h1 class="text-4xl font-black text-secondary mb-2">Checkout</h1>
+                        <p class="text-gray-500 font-medium">Gestiona cobros y pagos</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-col md:flex-row gap-4 w-full md:w-auto items-center">
+                    <div class="relative w-full md:w-72 group">
+                        <input type="text" id="order-search" placeholder="Búsqueda rápida..."
+                            class="w-full px-6 py-4 rounded-2xl bg-white border-2 border-transparent focus:border-primary shadow-xl outline-none transition-all text-lg font-bold"
+                            oninput="handleSearch(this.value)">
+                    </div>
+                    <button onclick="toggleScanner()" id="btn-scan"
+                        class="bg-primary text-white p-4 rounded-2xl shadow-xl hover:bg-red-600 transition-all flex items-center justify-center gap-2 font-black">
+                        <span class="text-2xl">📸</span>
+                        <span>ESCANEAR</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Scanner Container -->
+            <div id="reader-wrapper"
+                class="hidden mb-8 max-w-sm mx-auto overflow-hidden rounded-3xl border-4 border-primary shadow-2xl animate__animated animate__zoomIn">
+                <div id="reader" style="width: 100%"></div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <!-- Columna Izquierda: Lista de Pendientes -->
+                <div class="lg:col-span-4 bg-white rounded-[2.5rem] p-6 shadow-xl border border-gray-100">
+                    <h3
+                        class="text-lg font-black text-secondary uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+                        Por Cobrar
+                    </h3>
+                    <div id="pending-payments-list"
+                        class="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                        <p class="text-center py-10 text-gray-400 font-bold uppercase tracking-widest text-xs">No hay
+                            pagos pendientes</p>
+                    </div>
+                </div>
+
+                <!-- Columna Derecha: Detalle y Cobro -->
+                <div id="checkout-container" class="lg:col-span-8">
+                    <div id="checkout-content" class="hidden animate__animated animate__fadeIn">
+                        <div
+                            class="bg-white rounded-[3rem] p-8 lg:p-12 shadow-2xl shadow-gray-200/50 border border-gray-100 flex flex-col xl:flex-row gap-12">
+                            <!-- Detalle del Pedido -->
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between mb-8">
+                                    <div class="px-4 py-2 bg-secondary text-white rounded-2xl text-sm font-black tracking-widest uppercase"
+                                        id="display-order-id">#0000</div>
+                                    <span class="text-gray-400 font-bold" id="display-order-time">--:--</span>
+                                </div>
+
+                                <h2 class="text-3xl font-black text-secondary mb-6" id="display-client">Nombre del
+                                    Cliente</h2>
+
+                                <div class="space-y-4 mb-8" id="display-items">
+                                    <!-- Items dinámicos -->
+                                </div>
+
+                                <div class="flex items-center gap-4 text-gray-400 font-bold mb-4">
+                                    <span>📞</span> <span id="display-phone">0000-0000</span>
+                                </div>
+
+                                <div id="display-comment-container"
+                                    class="hidden mb-6 bg-red-50 p-4 rounded-2xl border border-red-100">
+                                    <span class="text-primary font-black uppercase text-xs tracking-widest">📝 Nota del
+                                        Cliente:</span>
+                                    <p class="text-gray-700 font-bold mt-1" id="display-comment">...</p>
+                                </div>
+                            </div>
+
+                            <!-- Area de Cobro -->
+                            <div
+                                class="w-full xl:w-80 flex flex-col justify-between border-t xl:border-t-0 xl:border-l border-gray-100 pt-8 xl:pt-0 xl:pl-12">
+                                <div>
+                                    <p class="text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Total a
+                                        Pagar</p>
+                                    <div class="text-5xl font-black text-primary mb-12" id="display-total">LPS 0.00
+                                    </div>
+                                </div>
+
+                                <div class="space-y-4">
+                                    <div id="payment-status-container"
+                                        class="hidden text-center p-4 bg-green-50 text-green-600 rounded-2xl font-black uppercase tracking-widest border border-green-100 mb-4">
+                                        ✅ PAGADO
+                                    </div>
+
+                                    <button id="btn-pay" onclick="markAsPaid()"
+                                        class="w-full bg-secondary text-white py-6 rounded-3xl font-black text-2xl shadow-xl shadow-gray-200 hover:bg-primary transition-all active:scale-95 flex items-center justify-center gap-4">
+                                        <span>COBRAR</span>
+                                        <span class="text-3xl">💵</span>
+                                    </button>
+
+                                    <button id="btn-close" onclick="resetView()"
+                                        class="w-full py-4 text-gray-400 font-bold hover:text-secondary transition-all">
+                                        Cerrar / Nuevo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="empty-state"
+                        class="flex flex-col items-center justify-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-gray-200 opacity-40">
+                        <span class="text-9xl mb-8">🏪</span>
+                        <p class="text-2xl font-black uppercase tracking-widest text-center">Selecciona un pedido</p>
+                        <p class="font-bold text-lg mt-2 text-center px-6">Usa los botones de la izquierda o busca un ID
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        import { db } from './js/firebase-config.js';
+        import { collection, query, where, getDocs, doc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        let currentOrder = null;
+        let allPending = [];
+        const searchInput = document.getElementById('order-search');
+        const emptyState = document.getElementById('empty-state');
+        const checkoutContent = document.getElementById('checkout-content');
+        const pendingList = document.getElementById('pending-payments-list');
+
+        // Escuchar exclusivamente pedidos NO Pagados
+        onSnapshot(query(collection(db, "pedidos"), where("pagado", "==", false)), (snapshot) => {
+            allPending = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Ordenar por fecha (más recientes arriba)
+            allPending.sort((a, b) => (b.fecha?.toDate() || 0) - (a.fecha?.toDate() || 0));
+
+            // Refrescar lista respetando el filtro actual del buscador
+            renderList(searchInput.value);
+        });
+
+        window.loadOrderById = (id) => {
+            const order = allPending.find(o => o.id === id);
+            if (order) {
+                displayOrder(order);
+                // Auto-scroll para móvil
+                document.getElementById('display-order-id').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        };
+
+        window.handleSearch = (val) => {
+            const query = val.toLowerCase().trim();
+            renderList(query);
+        };
+
+        function renderList(filter = '') {
+            let filtered = allPending;
+            if (filter) {
+                const q = filter.toLowerCase().trim();
+                filtered = allPending.filter(o =>
+                    o.cliente?.toLowerCase().includes(q) ||
+                    o.id.toUpperCase().includes(q.toUpperCase()) ||
+                    (o.telefono && o.telefono.includes(q))
+                );
+            }
+
+            if (filtered.length === 0) {
+                pendingList.innerHTML = `<p class="text-center py-10 text-gray-400 font-bold uppercase tracking-widest text-xs">
+                    ${filter ? 'No hay resultados' : 'No hay pagos pendientes'}
+                </p>`;
+            } else {
+                pendingList.innerHTML = filtered.map(order => `
+                    <div onclick='loadOrderById("${order.id}")' 
+                         class="bg-gray-50 p-4 rounded-2xl border border-gray-100 cursor-pointer hover:border-primary hover:bg-white transition-all group">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="font-black text-primary text-[10px] tracking-widest uppercase">#${order.id.slice(-8).toUpperCase()}</span>
+                            <span class="text-[10px] text-gray-400 font-bold">${order.fecha?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '--:--'}</span>
+                        </div>
+                        <div class="font-black text-secondary group-hover:text-primary transition-colors text-sm truncate">${order.cliente || 'Sin Nombre'}</div>
+                        <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
+                            <div class="text-[9px] font-black ${order.entregado ? 'text-green-500' : 'text-orange-500'} uppercase tracking-tight">
+                                ${order.entregado ? '✅ LISTO' : '⏳ COCINA'}
+                            </div>
+                            <div class="text-base font-black text-secondary">LPS ${order.total.toFixed(2)}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // --- Camera Scanner Logic ---
+        let html5QrCode = null;
+        window.toggleScanner = async () => {
+            const wrapper = document.getElementById('reader-wrapper');
+            const btn = document.getElementById('btn-scan');
+
+            if (wrapper.classList.contains('hidden')) {
+                wrapper.classList.remove('hidden');
+                btn.classList.add('bg-secondary');
+                btn.innerHTML = '<span>❌</span> <span>CERRAR</span>';
+
+                html5QrCode = new Html5Qrcode("reader");
+                const config = {
+                    fps: 20,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0
+                };
+
+                try {
+                    await html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+                        // El código de barras suele venir con el ID completo o parcial
+                        loadOrderByScanner(decodedText);
+                        toggleScanner(); // Cerrar al detectar
+                    });
+                } catch (err) {
+                    console.error("Camera error:", err);
+                    alert("No se pudo acceder a la cámara.");
+                    toggleScanner();
+                }
+            } else {
+                if (html5QrCode) {
+                    await html5QrCode.stop();
+                    html5QrCode = null;
+                }
+                wrapper.classList.add('hidden');
+                btn.classList.remove('bg-secondary');
+                btn.innerHTML = '<span class="text-2xl">📸</span> <span>ESCANEAR</span>';
+            }
+        };
+
+        import { getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        async function loadOrderByScanner(code) {
+            const query = code.toUpperCase().trim();
+            let order = allPending.find(o => o.id.toUpperCase().includes(query) || o.id.toUpperCase().slice(-8).includes(query));
+
+            if (order) {
+                displayOrder(order);
+                return;
+            }
+
+            // Not found in local list (maybe paid?). Try fetching from DB.
+            if (query.length > 15) { // Assuming it's a full ID
+                try {
+                    const docRef = doc(db, "pedidos", query);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        order = { id: docSnap.id, ...docSnap.data() };
+                        displayOrder(order);
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Error fetching order:", e);
+                }
+            }
+
+            alert("Pedido no encontrado en la lista de pendientes ni en base de datos.");
+        }
+
+        window.searchOrder = async (val) => {
+            // Re-implementado por handleSearch para tiempo real
+            handleSearch(val);
+        };
+
+        function displayOrder(order) {
+            currentOrder = order;
+            emptyState.classList.add('hidden');
+            checkoutContent.classList.remove('hidden');
+
+            document.getElementById('display-order-id').innerText = `#${order.id.slice(-8).toUpperCase()}`;
+            document.getElementById('display-client').innerText = order.cliente || 'Sin Nombre';
+            document.getElementById('display-phone').innerText = order.telefono || 'Sin Teléfono';
+            document.getElementById('display-total').innerText = `LPS ${order.total.toFixed(2)}`;
+
+            const time = order.fecha ? order.fecha.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+            document.getElementById('display-order-time').innerText = time;
+
+            const itemsContainer = document.getElementById('display-items');
+            itemsContainer.innerHTML = Object.entries(order.items || {}).map(([name, qty]) => `
+                <div class="flex justify-between items-center py-3 border-b border-gray-50 last:border-0">
+                    <span class="font-bold text-secondary text-lg">${name}</span>
+                    <span class="bg-gray-100 px-4 py-1 rounded-xl font-black text-xl">x${qty}</span>
+                </div>
+            `).join('');
+
+            // Update status
+            const btnPay = document.getElementById('btn-pay');
+            const statusContainer = document.getElementById('payment-status-container');
+
+            // Show comment if exists
+            const commentContainer = document.getElementById('display-comment-container');
+            if (order.comentario) {
+                document.getElementById('display-comment').innerText = order.comentario;
+                commentContainer.classList.remove('hidden');
+            } else {
+                commentContainer.classList.add('hidden');
+            }
+
+            if (order.pagado) {
+                btnPay.classList.add('hidden');
+                statusContainer.classList.remove('hidden');
+            } else {
+                btnPay.classList.remove('hidden');
+                statusContainer.classList.add('hidden');
+            }
+        }
+
+        window.markAsPaid = async () => {
+            if (!currentOrder) return;
+
+            const btn = document.getElementById('btn-pay');
+            btn.disabled = true;
+            btn.innerText = "PROCESANDO...";
+
+            try {
+                await updateDoc(doc(db, "pedidos", currentOrder.id), { pagado: true });
+                currentOrder.pagado = true;
+                displayOrder(currentOrder);
+
+                // Animation Feedback
+                const card = checkoutContent.querySelector('.bg-white');
+                card.classList.add('animate__animated', 'animate__pulse');
+                setTimeout(() => card.classList.remove('animate__animated', 'animate__pulse'), 1000);
+
+            } catch (e) {
+                alert("Error al procesar el pago");
+                console.error(e);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'COBRAR <span class="text-3xl">💵</span>';
+            }
+        };
+
+        window.resetView = () => {
+            currentOrder = null;
+            searchInput.value = '';
+            emptyState.classList.remove('hidden');
+            checkoutContent.classList.add('hidden');
+        };
+
+        window.toggleSidebar = () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('sidebar-collapsed');
+        };
+    </script>
+    <!-- Mobile Nav -->
+    <div
+        class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center p-2 pb-safe z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <a href="admin.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Dash</span>
+        </a>
+        <a href="pos.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Venta</span>
+        </a>
+        <a href="cobro.html" class="flex flex-col items-center p-2 rounded-xl transition-all text-primary bg-red-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Caja</span>
+        </a>
+        <a href="viewer.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Visor</span>
+        </a>
+        <a href="inventory.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Stock</span>
+        </a>
+    </div>
+</body>
+
+</html>

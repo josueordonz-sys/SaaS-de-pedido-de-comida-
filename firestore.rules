@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. Productos: Cualquiera puede verlos y actualizar stock, solo admins crean/borran
+    match /productos/{product} {
+      allow read, update: if true;
+      allow create, delete: if true; // Ahora permitido para gestión desde el panel
+    }
+    
+    // 2. Pedidos: Clientes pueden crear, Admins pueden ver y editar
+    match /pedidos/{pedido} {
+      allow create: if true;
+      allow read, update, delete: if true; // En una versión más segura, esto se limitaría con Custom Claims
+    }
+
+    // 3. SECRETS: EL CORAZÓN DE LA SEGURIDAD
+    // Nadie puede listar los secretos. Solo se puede leer un secreto SI conoces su ID (el PIN)
+    match /secrets/{pin} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if false; // Solo tú puedes crearlos desde la consola de Firebase
+    }
+  }
+}

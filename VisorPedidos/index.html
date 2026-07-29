@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor de Pedidos - Inversiones O.C.</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <h1>Pedidos en Curso</h1>
+                <span class="date-badge" id="currentDate">Hoy</span>
+            </div>
+            <div class="stats-summary">
+                <div class="stat-card">
+                    <span class="stat-label">Pendientes</span>
+                    <span class="stat-value">3</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Completados</span>
+                    <span class="stat-value">12</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="orders-grid">
+            <!-- Orders will be loaded here dynamically -->
+        </main>
+    </div>
+
+    <!-- Simulation Button -->
+    <button class="fab" onclick="simulateNewOrder()">
+        <span style="font-size: 1.2rem;">🔔</span> Simular Pedido
+    </button>
+
+    <!-- Audio Enabler Overlay -->
+    <div id="audio-overlay"
+        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 200; display: flex; justify-content: center; align-items: center; color: white; flex-direction: column;">
+        <h2>🔊 Activar Sonido</h2>
+        <p>Haga clic en cualquier lugar para activar las alertas de voz.</p>
+        <button class="btn btn-primary" style="margin-top: 20px; font-size: 1.2rem;">Entendido</button>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        // --- Overlay Logic ---
+        const overlay = document.getElementById('audio-overlay');
+        overlay.addEventListener('click', () => {
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.remove(), 500);
+            // Example speech to warm up the engine
+            const u = new SpeechSynthesisUtterance("Sistema listo.");
+            window.speechSynthesis.speak(u);
+        });
+
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAzDppCUH55L3cm3TCFGpJYbXtdJuqegv0",
+            authDomain: "comida-negocio.firebaseapp.com",
+            projectId: "comida-negocio",
+            storageBucket: "comida-negocio.firebasestorage.app",
+            messagingSenderId: "799544508872",
+            appId: "1:799544508872:ios:b9599a93fe93590e7800fd"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // --- Date Logic ---
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('currentDate').textContent = new Date().toLocaleDateString('es-ES', options);
+
+        // Track page load time to avoid announcing old orders
+        const pageLoadTime = new Date();
+
+        // --- Voice Logic ---
+        function speak(text) {
+            if (!window.speechSynthesis) {
+                console.error("Web Speech API not supported");
+                return;
+            }
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'es-ES';
+            utterance.rate = 1.0;
+
+            const voices = window.speechSynthesis.getVoices();
+            const spanishVoice = voices.find(voice => voice.lang.includes('es') && voice.name.includes('Google')) ||
+                voices.find(voice => voice.lang.includes('es'));
+            if (spanishVoice) utterance.voice = spanishVoice;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- Real-time Orders Logic ---
+        const ordersGrid = document.querySelector('.orders-grid');
+        const pendingCountEl = document.querySelector('.stat-value:first-child');
+        const completedCountEl = document.querySelectorAll('.stat-value')[1];
+
+        let allActiveOrders = []; // Store raw data
+        let currentPage = 0;
+        const PAGE_DURATION = 10000; // 10 seconds per page
+
+        // Listener for PENDING orders
+        db.collection("pedidos")
+            .where("entregado", "==", false)
+            .onSnapshot((snapshot) => {
+                if (pendingCountEl) pendingCountEl.textContent = snapshot.size;
+
+                snapshot.docChanges().forEach((change) => {
+                    const order = change.doc.data();
+                    const orderId = change.doc.id;
+
+                    if (change.type === "added") {
+                        allActiveOrders.push({ id: orderId, ...order });
+
+                        // New order announcement logic
+                        const orderDate = order.fecha ? order.fecha.toDate() : new Date();
+                        const isRecent = orderDate > new Date(pageLoadTime.getTime() - 2000);
+                        if (isRecent) {
+                            const clientName = order.cliente || "Cliente";
+                            const itemsList = getItemsArray(order.items);
+                            announceOrder(clientName, itemsList);
+                        }
+                    }
+                    if (change.type === "modified") {
+                        const index = allActiveOrders.findIndex(o => o.id === orderId);
+                        if (index !== -1) allActiveOrders[index] = { id: orderId, ...order };
+                    }
+                    if (change.type === "removed") {
+                        allActiveOrders = allActiveOrders.filter(o => o.id !== orderId);
+                    }
+                });
+
+                // Sort by date (Oldest first for kitchen usually, or Newest. Let's do Oldest First)
+                allActiveOrders.sort((a, b) => {
+                    const dateA = a.fecha ? a.fecha.toDate() : new Date();
+                    const dateB = b.fecha ? b.fecha.toDate() : new Date();
+                    return dateA - dateB;
+                });
+
+                // Trigger UI Refresh
+                refreshDisplay();
+
+            }, (error) => {
+                console.error("Error getting orders: ", error);
+            });
+
+        // Pagination / Rotation Logic
+        function refreshDisplay() {
+            // 1. Calculate how many fit?
+            // Better: Just fill the grid with as many as fit, then page.
+            // But CSS auto-fit handles layout. We need to know COUNT.
+            // Simple heuristic for "Large" cards: Max 4-6 per page on 1080p.
+            // Let's rely on CSS Grid to hide overflow if we forced it, but we want to clear the DOM.
+            // Let's assume a fixed number for "Great Visibility": 6.
+            const CARDS_PER_PAGE = 6;
+
+            const totalPages = Math.ceil(allActiveOrders.length / CARDS_PER_PAGE) || 1;
+
+            // Adjust current page if out of bounds (e.g. deletion)
+            if (currentPage >= totalPages) currentPage = 0;
+
+            // Get slice
+            const start = currentPage * CARDS_PER_PAGE;
+            const end = start + CARDS_PER_PAGE;
+            const ordersToShow = allActiveOrders.slice(start, end);
+
+            // Render
+            ordersGrid.innerHTML = ''; // Clear current view
+            ordersToShow.forEach(order => {
+                const card = createCardElement(order);
+                ordersGrid.appendChild(card);
+            });
+
+            // If we have multiple pages, indicate it visually?
+            // Maybe a page indicator in header?
+            // document.getElementById('pageStatus').textContent = `Página ${currentPage + 1}/${totalPages}`;
+        }
+
+        // Auto-Rotate Loop
+        setInterval(() => {
+            const CARDS_PER_PAGE = 6;
+            const totalPages = Math.ceil(allActiveOrders.length / CARDS_PER_PAGE) || 1;
+
+            if (totalPages > 1) {
+                currentPage = (currentPage + 1) % totalPages;
+                refreshDisplay();
+            }
+        }, PAGE_DURATION);
+
+        // Listener for COMPLETED orders (Today)
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        db.collection("pedidos")
+            .where("entregado", "==", true)
+            .where("fecha", ">=", startOfToday)
+            .onSnapshot((snapshot) => {
+                if (completedCountEl) completedCountEl.textContent = snapshot.size;
+            });
+
+        function getItemsArray(itemsMap) {
+            if (!itemsMap) return [];
+            return Object.entries(itemsMap).map(([name, qty]) => ({ name, qty }));
+        }
+
+        function announceOrder(customerName, items) {
+            const itemsText = items.map(item => item.name).join(", ");
+            const announcement = `Nuevo pedido para ${customerName}. ${itemsText}.`;
+            speak(announcement);
+        }
+
+        function createCardElement(data) {
+            const date = data.fecha ? data.fecha.toDate() : new Date();
+            const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            const items = getItemsArray(data.items);
+            const itemsHtml = items.map(item => `
+                <div class="item">
+                    <span class="item-name">${item.name}</span>
+                    <span class="item-qty">x${item.qty}</span>
+                </div>
+            `).join('');
+
+            const statusClass = data.pagado ? 'paid' : (data.entregado ? 'completed' : 'pending');
+            const statusText = data.pagado ? 'Pagado' : (data.entregado ? 'Entregado' : 'Pendiente');
+
+            const article = document.createElement('article');
+            article.id = `card-${data.id}`;
+            article.className = `order-card ${statusClass}`; // removed 'new' class logic for pagination simplicity, or can check age
+
+            article.innerHTML = `
+                <div class="card-header">
+                    <div class="order-id">#${data.id.slice(-4).toUpperCase()}</div>
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                </div>
+                <div class="customer-info">
+                    <h3>${data.cliente || 'Desconocido'}</h3>
+                    <p class="time">${timeString}</p>
+                </div>
+                <div class="order-items">
+                    ${itemsHtml}
+                </div>
+                <div class="card-footer">
+                    <div class="actions" style="width: 100%; display: flex; justify-content: flex-end;">
+                        ${!data.entregado ? '<button class="btn btn-primary" style="width:100%; font-size:1.2rem; padding: 1rem;">En Cocina</button>' : '✓'}
+                    </div>
+                </div>
+            `;
+            return article;
+        }
+
+        // --- Simulation Button (Optional: Keep for testing connectivity or remove?) ---
+        // User asked to "show orders from app". I will modify the button to "Test Connection"
+        function simulateNewOrder() {
+            // Local sim only
+            speak("Prueba de audio funcionando.");
+            alert("El sistema ahora está escuchando la base de datos real. Crea un pedido en la App para verlo aquí.");
+        }
+    </script>
+</body>
+
+</html>

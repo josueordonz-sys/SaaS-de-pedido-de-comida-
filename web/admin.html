@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - COMIDA</title>
+    <link rel="icon" type="image/png" href="img/logo.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/styles.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#FF4D4D',
+                        secondary: '#2D3436',
+                        accent: '#FFD93D',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .sidebar-transition {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar-collapsed {
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+    <script>
+        // Session Guard
+        if (localStorage.getItem('admin_session') !== 'true') {
+            window.location.href = 'index.html';
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 text-gray-900">
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-64 bg-secondary text-white p-6 hidden md:flex flex-col sidebar-transition">
+            <div class="flex flex-col items-center mb-10">
+                <img src="img/logo.png" alt="Logo" class="h-24 mb-4 drop-shadow-lg">
+                <h2 class="text-xl font-bold gradient-text text-center">COMIDA Admin</h2>
+            </div>
+            <nav class="space-y-4 flex-1">
+                <a href="admin.html" class="flex items-center gap-3 p-3 bg-white/10 rounded-xl font-medium">
+                    Dashboard
+                </a>
+                <a href="pos.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Ventas (POS)
+                </a>
+                <a href="cobro.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Caja / Cobro
+                </a>
+                <a href="viewer.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Visor de Pedidos
+                </a>
+                <a href="inventory.html" class="flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-all">
+                    Inventario
+                </a>
+                <div class="pt-10 space-y-4 border-t border-white/10">
+                    <a href="index.html"
+                        class="flex items-center gap-3 p-3 text-gray-400 hover:text-white transition-all">
+                        Ver Menú Público
+                    </a>
+                    <button onclick="logout()"
+                        class="w-full flex items-center gap-3 p-3 text-red-400 hover:text-red-300 transition-all">
+                        Cerrar Sesión
+                    </button>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-8">
+            <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+                <div class="flex items-center gap-4">
+                    <button onclick="toggleSidebar()"
+                        class="hidden md:flex p-2 hover:bg-gray-100 rounded-lg transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-secondary" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                    <h1 class="text-3xl font-bold">Resumen General</h1>
+                </div>
+                <div class="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                    <div class="relative w-full md:w-80">
+                        <input type="text" id="scan-order" placeholder="Escanear Código..."
+                            class="w-full border rounded-xl p-3 pl-4 focus:ring-2 ring-primary outline-none shadow-sm">
+                    </div>
+                    <button onclick="openClosingModal()"
+                        class="bg-secondary text-white px-6 py-3 rounded-xl shadow-lg font-bold hover:bg-primary transition-all">
+                        Cierre de Caja
+                    </button>
+                </div>
+            </header>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <p class="text-gray-500 text-sm font-medium mb-1">Ventas de Hoy</p>
+                    <h3 id="stat-sales" class="text-3xl font-bold">LPS 0.00</h3>
+                    <div class="mt-2 text-green-500 text-sm">↑ 12% vs ayer</div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <p class="text-gray-500 text-sm font-medium mb-1">Pedidos Pendientes</p>
+                    <h3 id="stat-pending" class="text-3xl font-bold">0</h3>
+                    <div class="mt-2 text-orange-500 text-sm">Action required</div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <p class="text-gray-500 text-sm font-medium mb-1">Stock Bajo</p>
+                    <h3 id="stat-low-stock" class="text-3xl font-bold">0</h3>
+                    <div class="mt-2 text-red-500 text-sm">Revisar inventario</div>
+                </div>
+            </div>
+
+            <!-- Recent Orders -->
+            <section class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-6 border-b border-gray-50 flex justify-between items-center">
+                    <h2 class="text-xl font-bold">Pedidos Recientes</h2>
+                    <a href="pos.html" class="text-primary font-bold text-sm">Ver todos →</a>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50 text-gray-400 text-xs uppercase tracking-wider">
+                            <tr>
+                                <th class="px-6 py-4">ID</th>
+                                <th class="px-6 py-4">Cliente</th>
+                                <th class="px-6 py-4">Total</th>
+                                <th class="px-6 py-4">Estado</th>
+                                <th class="px-6 py-4">Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orders-list">
+                            <!-- Rows loaded via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Mobile Nav -->
+    <div
+        class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center p-2 pb-safe z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <a href="admin.html" class="flex flex-col items-center p-2 rounded-xl transition-all text-primary bg-red-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Dash</span>
+        </a>
+        <a href="pos.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Venta</span>
+        </a>
+        <a href="cobro.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Caja</span>
+        </a>
+        <a href="viewer.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Visor</span>
+        </a>
+        <a href="inventory.html"
+            class="flex flex-col items-center p-2 rounded-xl transition-all text-gray-400 hover:bg-gray-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <span class="text-[10px] font-bold mt-1">Stock</span>
+        </a>
+    </div>
+
+    <!-- Cierre de Caja Modal -->
+    <div id="closing-modal"
+        class="hidden fixed inset-0 bg-secondary/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl animate__animated animate__zoomIn">
+            <h2 class="text-3xl font-black text-secondary mb-2">Cierre de Caja</h2>
+            <p class="text-gray-500 mb-8 border-b pb-4">Resumen de operaciones de hoy</p>
+
+            <div class="space-y-6 mb-10">
+                <div class="flex justify-between items-center bg-gray-50 p-6 rounded-3xl">
+                    <span class="text-gray-500 font-bold uppercase tracking-widest text-xs">Total del Día</span>
+                    <span id="close-total-sales" class="text-2xl font-black text-secondary">LPS 0.00</span>
+                </div>
+
+                <div class="flex justify-between items-center bg-green-50 p-6 rounded-3xl border border-green-100">
+                    <span class="text-green-600 font-bold uppercase tracking-widest text-xs">Total Cobrado</span>
+                    <span id="close-total-paid" class="text-2xl font-black text-green-700">LPS 0.00</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gray-50 p-6 rounded-3xl">
+                        <span class="text-gray-400 font-bold uppercase tracking-widest text-[10px] block mb-1">Pedidos
+                            Hoy</span>
+                        <span id="close-total-orders" class="text-xl font-black">0</span>
+                    </div>
+                    <div class="bg-gray-50 p-6 rounded-3xl">
+                        <span class="text-gray-400 font-bold uppercase tracking-widest text-[10px] block mb-1">Ticket
+                            Promedio</span>
+                        <span id="close-avg-ticket" class="text-xl font-black">LPS 0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="closeClosingModal()"
+                    class="flex-1 py-4 font-bold text-gray-400 hover:text-secondary transition-all">Regresar</button>
+                <button onclick="window.print()"
+                    class="flex-1 bg-secondary text-white py-4 rounded-2xl font-black hover:bg-primary transition-all shadow-xl">Imprimir
+                    Reporte</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { db } from './js/firebase-config.js';
+        import { collection, onSnapshot, query, where, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+
+        let todayStats = {
+            totalAmount: 0,
+            paidAmount: 0,
+            orderCount: 0
+        };
+
+        // Live stats for dashboard (Pedidos NO pagados)
+        onSnapshot(query(collection(db, "pedidos"), where("pagado", "==", false)), (snap) => {
+            document.getElementById('stat-pending').innerText = snap.size;
+        });
+
+        // Low Stock Count
+        onSnapshot(query(collection(db, "productos"), where("cantidad", "<=", 5)), (snap) => {
+            document.getElementById('stat-low-stock').innerText = snap.size;
+        });
+
+        // Total Sales Today (Broadened logic to show "real" amount)
+        onSnapshot(query(collection(db, "pedidos"), where("fecha", ">=", startOfToday)), (snap) => {
+            let total = 0;
+            let paid = 0;
+            snap.docs.forEach(doc => {
+                const data = doc.data();
+                const amount = data.total || 0;
+                total += amount;
+                if (data.pagado) paid += amount;
+            });
+
+            todayStats.totalAmount = total;
+            todayStats.paidAmount = paid;
+            todayStats.orderCount = snap.size;
+
+            document.getElementById('stat-sales').innerText = `LPS ${total.toFixed(2)}`;
+        });
+
+        window.openClosingModal = () => {
+            document.getElementById('close-total-sales').innerText = `LPS ${todayStats.totalAmount.toFixed(2)}`;
+            document.getElementById('close-total-paid').innerText = `LPS ${todayStats.paidAmount.toFixed(2)}`;
+            document.getElementById('close-total-orders').innerText = todayStats.orderCount;
+
+            const avg = todayStats.orderCount > 0 ? todayStats.totalAmount / todayStats.orderCount : 0;
+            document.getElementById('close-avg-ticket').innerText = `LPS ${avg.toFixed(2)}`;
+
+            const m = document.getElementById('closing-modal');
+            m.classList.remove('hidden');
+            m.classList.add('flex');
+        };
+
+        window.closeClosingModal = () => {
+            const m = document.getElementById('closing-modal');
+            m.classList.add('hidden');
+            m.classList.remove('flex');
+        };
+
+        // Recent Orders Table
+        onSnapshot(query(collection(db, "pedidos"), orderBy("fecha", "desc"), limit(20)), (snap) => {
+            const list = document.getElementById('orders-list');
+            list.innerHTML = snap.docs.map(doc => {
+                const order = doc.data();
+                const statusColor = order.entregado ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700';
+                const orderId = doc.id.slice(-8).toUpperCase();
+                return `
+                    <tr class="border-b border-gray-50 text-sm transition-all duration-500" id="row-${orderId}">
+                        <td class="px-6 py-4 font-mono text-xs font-black text-primary">#${orderId}</td>
+                        <td class="px-6 py-4">
+                            <div class="font-semibold">${order.cliente}</div>
+                            <div class="text-[10px] text-gray-400">${order.telefono || 'Sin tel.'}</div>
+                        </td>
+                        <td class="px-6 py-4 font-bold">LPS ${(order.total || 0).toFixed(2)}</td>
+                        <td class="px-6 py-4">
+                            <span class="px-3 py-1 rounded-full text-xs font-bold ${statusColor}">
+                                ${order.entregado ? 'Entregado' : 'Pendiente'}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-gray-500 text-sm">${order.fecha?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '--:--'}</td>
+                    </tr>
+                `;
+            }).join('');
+        });
+
+        // Scan/Search Logic (Intelligent Partial Match)
+        const scanInput = document.getElementById('scan-order');
+        scanInput.oninput = () => {
+            const val = scanInput.value.trim().toUpperCase();
+
+            // Highlight reset
+            document.querySelectorAll('tr').forEach(tr => tr.classList.remove('bg-yellow-100', 'scale-105', 'opacity-30'));
+
+            if (val.length >= 3) {
+                let foundMatch = false;
+
+                // Get all rows that represent orders
+                const rows = document.querySelectorAll('tr[id^="row-"]');
+
+                rows.forEach(row => {
+                    const rowId = row.id.replace('row-', '');
+
+                    // Smart check: if the scanned value is part of the ID
+                    if (rowId.includes(val)) {
+                        row.classList.add('bg-yellow-100', 'scale-[1.02]');
+                        if (!foundMatch) {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            foundMatch = true;
+                        }
+                    } else {
+                        // Dim non-matching rows to make the match "pop"
+                        row.classList.add('opacity-30');
+                    }
+                });
+            }
+        };
+
+        // Reset search on enter
+        scanInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                setTimeout(() => scanInput.value = '', 1000);
+            }
+        };
+
+        window.logout = () => {
+            localStorage.removeItem('admin_session');
+            window.location.href = 'index.html';
+        };
+
+        window.toggleSidebar = () => {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('sidebar-collapsed');
+        };
+    </script>
+</body>
+
+</html>
